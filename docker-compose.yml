@@ -1,0 +1,39 @@
+services:
+  api:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://media:media@db:5432/media_api
+      REDIS_URL: redis://redis:6379/0
+      PORT: 8000
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    command: sh -c "alembic upgrade head || true; uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: media
+      POSTGRES_PASSWORD: media
+      POSTGRES_DB: media_api
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U media"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7
+    volumes:
+      - redisdata:/data
+
+volumes:
+  pgdata:
+  redisdata:
