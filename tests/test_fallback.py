@@ -5,7 +5,12 @@ from __future__ import annotations
 import pytest
 
 from app.config import Settings
-from app.providers.base import MediaProvider, ProviderInvalidQueryError, ProviderUnavailableError
+from app.providers.base import (
+    MediaProvider,
+    ProviderInvalidQueryError,
+    ProviderNotFoundError,
+    ProviderUnavailableError,
+)
 from app.providers.manager import ProviderManager
 from app.providers.mock import FailingProvider, MockProvider
 from app.services.cache import CacheService
@@ -28,6 +33,30 @@ async def test_fallback_to_next_provider_on_failure():
     results, provider = await r.search("hello", limit=2)
     assert provider == "mock"
     assert len(results) == 2
+
+
+class SearchNotFound(FailingProvider):
+    """Upstream with no search endpoint: every search 404s."""
+
+    name = "notfound"
+
+    async def search(self, query, limit=10, offset=0):
+        raise ProviderNotFoundError("Media not found via notfound")
+
+
+@pytest.mark.asyncio
+async def test_search_not_found_falls_back_to_next_provider():
+    r = _resolver("notfound,mock", {"notfound": SearchNotFound(), "mock": MockProvider()})
+    results, provider = await r.search("hello", limit=2)
+    assert provider == "mock"
+    assert len(results) == 2
+
+
+@pytest.mark.asyncio
+async def test_search_not_found_everywhere_is_unavailable_not_crash():
+    r = _resolver("notfound", {"notfound": SearchNotFound()})
+    with pytest.raises(ResolverUnavailable):
+        await r.search("hello")
 
 
 @pytest.mark.asyncio

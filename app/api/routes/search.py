@@ -9,6 +9,7 @@ from app.schemas.errors import APIError
 from app.services.resolver import (
     MediaResolver,
     ResolverBadRequest,
+    ResolverNotFound,
     ResolverUnavailable,
 )
 
@@ -32,6 +33,8 @@ async def search(
         results, provider = await resolver.search(q, limit=limit, offset=offset)
     except ResolverBadRequest as exc:
         raise APIError(400, "BAD_REQUEST", str(exc)) from exc
+    except ResolverNotFound as exc:
+        raise APIError(404, "NOT_FOUND", str(exc)) from exc
     except ResolverUnavailable as exc:
         raise APIError(503, "PROVIDER_UNAVAILABLE", str(exc)) from exc
     request.state.provider = provider or "-"

@@ -78,10 +78,14 @@ class MediaResolver:
                 return results, provider.name
             except ProviderInvalidQueryError as exc:
                 raise ResolverBadRequest(str(exc)) from exc
+            except ProviderNotFoundError as exc:
+                # A 404 on search means this provider can't serve the query
+                # (e.g. no search endpoint) — not that media doesn't exist.
+                last_error = exc
+                log.info("provider %s search not found, falling back: %s", provider.name, exc)
+                continue
             except ProviderError as exc:
-                # Recoverable -> try next; non-recoverable (NotFound can't
-                # happen for search meaningfully) -> record and continue only
-                # if recoverable.
+                # Recoverable -> try next; other non-recoverable errors abort.
                 last_error = exc
                 if not exc.recoverable:
                     raise ResolverNotFound(str(exc)) from exc
