@@ -7,12 +7,17 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import JSON, Boolean, DateTime, Integer, String
+from sqlalchemy import JSON, Boolean, DateTime, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
-VALID_PERMISSIONS = {"search", "info", "stream", "download"}
+# Individual scopes. "*" grants every current and future client scope and is
+# the default for new keys: one key per bot covers the whole client API.
+SCOPES = {"search", "info", "stream", "download", "resolve", "convert"}
+ALL_SCOPES = "*"
+VALID_PERMISSIONS = SCOPES | {ALL_SCOPES}
+DEFAULT_PERMISSIONS = [ALL_SCOPES]
 
 
 def _utcnow() -> datetime:
@@ -24,6 +29,9 @@ class ApiKey(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     name: Mapped[str] = mapped_column(String(128), nullable=False)
+    owner_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("owners.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     key_hash: Mapped[str] = mapped_column(String(128), unique=True, index=True, nullable=False)
     key_last3: Mapped[str] = mapped_column(String(8), nullable=False, default="***")
     active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
@@ -46,7 +54,8 @@ class ApiKey(Base):
         return exp <= datetime.now(timezone.utc)
 
     def has_permission(self, scope: str) -> bool:
-        return scope in (self.permissions or [])
+        perms = self.permissions or []
+        return ALL_SCOPES in perms or scope in perms
 
     @property
     def masked(self) -> str:

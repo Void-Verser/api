@@ -1,19 +1,33 @@
+# Full self-hosted stack: API + worker + Postgres + Redis, shared result volume.
 services:
   api:
     build: .
     env_file: .env
-    environment:
+    environment: &common
       DATABASE_URL: postgresql+psycopg://media:media@db:5432/media_api
       REDIS_URL: redis://redis:6379/0
-      PORT: 8000
+      LOCAL_STORAGE_DIR: /code/data/results
     ports:
       - "8000:8000"
+    volumes:
+      - results:/code/data/results
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
-    command: sh -c "alembic upgrade head || true; uvicorn app.main:app --host 0.0.0.0 --port 8000"
+
+  worker:
+    build: .
+    env_file: .env
+    environment: *common
+    command: ["python", "-m", "app.worker"]
+    volumes:
+      - results:/code/data/results
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
 
   db:
     image: postgres:16
@@ -37,3 +51,4 @@ services:
 volumes:
   pgdata:
   redisdata:
+  results:

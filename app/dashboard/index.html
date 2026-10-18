@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<meta name="description" content="Owner dashboard for the Media API: API keys, providers and processing status.">
+<title>Media API — Owner Dashboard</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/dashboard/assets/styles.css">
+<script src="/dashboard/assets/app.js" defer></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="topbar">
+  <div class="brand"><span class="logo" aria-hidden="true">▶</span> Media API <span id="env-badge" class="badge" hidden></span></div>
+  <div class="who" id="who" hidden>
+    <span id="who-email"></span>
+    <button type="button" class="btn ghost" id="logout-btn">Sign out</button>
+  </div>
+</header>
+
+<main id="main" tabindex="-1">
+  <p id="loading" class="muted center" role="status">Loading…</p>
+
+  <!-- Sign in -->
+  <section id="login-view" class="card narrow" hidden aria-labelledby="login-title">
+    <h1 id="login-title">Owner sign in</h1>
+    <p class="muted" id="no-owner-hint" hidden>
+      No owner account exists yet. Set <code>OWNER_EMAIL</code> and <code>OWNER_PASSWORD</code>
+      (12+ characters) in your deployment's environment and redeploy, or run
+      <code>python scripts/create_owner.py</code>.
+    </p>
+    <form id="login-form" novalidate>
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" autocomplete="username" required>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+      <p id="login-error" class="error" role="alert" hidden></p>
+      <button type="submit" class="btn primary" id="login-btn">Sign in</button>
+    </form>
+  </section>
+
+  <!-- Dashboard -->
+  <div id="app-view" hidden>
+    <ul id="warnings" class="warnings" aria-label="Configuration warnings"></ul>
+
+    <section class="card" aria-labelledby="url-title">
+      <h2 id="url-title">Your API URL</h2>
+      <div class="copyrow">
+        <code id="api-url" class="value"></code>
+        <button type="button" class="btn" data-copy-target="api-url">Copy URL</button>
+      </div>
+      <p class="muted small">Source: <span id="api-url-source"></span>. Set <code>API_BASE_URL</code> to pin a custom domain.</p>
+    </section>
+
+    <section class="card highlight" aria-labelledby="getkey-title">
+      <h2 id="getkey-title">Get API Key</h2>
+      <p class="muted">One key per bot or app. It works for search, info, stream, download, resolve, conversion and job status.</p>
+      <form id="newkey-form" class="inline" novalidate>
+        <label for="key-name" class="sr-only">Key name (optional)</label>
+        <input id="key-name" maxlength="128" placeholder="Key name, e.g. Raiden Music Bot (optional)">
+        <button type="submit" class="btn primary big" id="getkey-btn">Get API Key</button>
+      </form>
+      <div id="newkey-result" class="reveal" hidden tabindex="-1" aria-live="polite">
+        <p class="warn-text"><strong>Copy this key now.</strong> It is shown only once — only a hash is stored.</p>
+        <div class="copyrow">
+          <code id="newkey-value" class="value secret"></code>
+          <button type="button" class="btn" data-copy-target="newkey-value">Copy key</button>
+        </div>
+        <p class="small muted">Put this in your bot's server-side environment (never in client code):</p>
+        <pre id="newkey-config" class="value"></pre>
+        <div class="actions">
+          <button type="button" class="btn" data-copy-target="newkey-config">Copy bot config</button>
+          <button type="button" class="btn ghost" id="newkey-done">I've saved it</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="card" aria-labelledby="keys-title">
+      <div class="section-head">
+        <h2 id="keys-title">API keys</h2>
+        <span class="muted small" id="stats"></span>
+      </div>
+      <p id="keys-empty" class="muted" hidden>No keys yet — click <strong>Get API Key</strong>.</p>
+      <div class="table-wrap">
+        <table id="keys-table" hidden>
+          <caption class="sr-only">API keys</caption>
+          <thead><tr><th scope="col">Name</th><th scope="col">Key</th><th scope="col">Status</th>
+            <th scope="col">Created</th><th scope="col">Last used</th><th scope="col">Requests</th><th scope="col"><span class="sr-only">Actions</span></th></tr></thead>
+          <tbody id="keys-body"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section class="card" aria-labelledby="prov-title">
+        <h2 id="prov-title">Providers</h2>
+        <ul id="providers" class="plist"></ul>
+      </section>
+      <section class="card" aria-labelledby="proc-title">
+        <h2 id="proc-title">Media processing</h2>
+        <dl id="processing" class="kv"></dl>
+      </section>
+    </div>
+
+    <section class="card" aria-labelledby="docs-title">
+      <div class="section-head">
+        <h2 id="docs-title">Quick start</h2>
+        <a class="btn ghost" href="/docs" target="_blank" rel="noopener">Open API docs</a>
+      </div>
+      <h3>Search (YouTube first)</h3>
+      <pre id="ex-search" class="value"></pre>
+      <button type="button" class="btn small" data-copy-target="ex-search">Copy</button>
+      <h3>Convert to MP3 and poll the job</h3>
+      <pre id="ex-convert" class="value"></pre>
+      <button type="button" class="btn small" data-copy-target="ex-convert">Copy</button>
+      <h3>Python (Telegram bot)</h3>
+      <pre id="ex-python" class="value"></pre>
+      <button type="button" class="btn small" data-copy-target="ex-python">Copy</button>
+    </section>
+  </div>
+</main>
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+</body>
+</html>

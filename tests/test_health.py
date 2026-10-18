@@ -16,9 +16,17 @@ def test_health_lists_providers(client):
     r = client.get("/health")
     names = {p["name"] for p in r.json().get("providers", [])}
     assert "mock" in names
-    # Unconfigured HTTP providers report cleanly instead of crashing.
+    # Unconfigured providers report cleanly instead of crashing.
     by_name = {p["name"]: p for p in r.json()["providers"]}
-    assert by_name["provider_a"]["enabled"] is False
+    assert by_name["spotify"]["enabled"] is False
+    assert "SPOTIFY_CLIENT_ID" in by_name["spotify"]["reason"]
+    assert by_name["youtube"]["enabled"] is True  # metadata works without credentials
+
+
+def test_readiness(client):
+    r = client.get("/health/ready")
+    assert r.status_code == 200
+    assert r.json()["checks"]["database"] == "up"
 
 
 def test_docs_available(client):

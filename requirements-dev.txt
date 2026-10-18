@@ -1,0 +1,6 @@
+-r requirements.txt
+pytest>=8.0,<9
+pytest-asyncio>=0.23,<1
+anyio>=4.0,<5
+# Bundled FFmpeg binary so the worker can run locally without a system ffmpeg.
+imageio-ffmpeg>=0.5

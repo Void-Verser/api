@@ -2,34 +2,27 @@
 
 from __future__ import annotations
 
-from app.config import Settings
+from app.config import KNOWN_PROVIDERS, Settings
+from app.providers.apple_music import AppleMusicProvider
 from app.providers.base import MediaProvider, ProviderStatus
 from app.providers.mock import MockProvider
-from app.providers.provider_a import ProviderA
-from app.providers.provider_b import ProviderB
-from app.providers.provider_c import ProviderC
+from app.providers.soundcloud import SoundCloudProvider
+from app.providers.spotify import SpotifyProvider
+from app.providers.youtube import YouTubeProvider
+
+DEFAULT_ORDER = ("youtube", "soundcloud", "spotify", "apple_music")
 
 
 def build_providers(settings: Settings) -> dict[str, MediaProvider]:
-    timeout = settings.provider_timeout_seconds
-    return {
-        "provider_a": ProviderA(
-            api_key=settings.provider_a_api_key,
-            base_url=settings.provider_a_base_url,
-            timeout=timeout,
-        ),
-        "provider_b": ProviderB(
-            api_key=settings.provider_b_api_key,
-            base_url=settings.provider_b_base_url,
-            timeout=timeout,
-        ),
-        "provider_c": ProviderC(
-            api_key=settings.provider_c_api_key,
-            base_url=settings.provider_c_base_url,
-            timeout=timeout,
-        ),
-        "mock": MockProvider(enabled=settings.mock_provider_enabled),
+    registry: dict[str, MediaProvider] = {
+        "youtube": YouTubeProvider(settings),
+        "soundcloud": SoundCloudProvider(settings),
+        "spotify": SpotifyProvider(settings),
+        "apple_music": AppleMusicProvider(settings),
     }
+    if settings.mock_enabled:
+        registry["mock"] = MockProvider(enabled=True)
+    return registry
 
 
 class ProviderManager:
@@ -40,13 +33,15 @@ class ProviderManager:
             registry.update(extra)
         self._registry = registry
         order = [p for p in settings.provider_order_list if p in registry]
-        # Append mock last if enabled and not explicitly ordered.
-        if settings.mock_provider_enabled and "mock" not in order and "mock" in registry:
-            order.append("mock")
-        # Append any remaining registered providers not in the order.
-        for name in registry:
-            if name not in order:
+        # YouTube is the primary provider: unless explicitly ordered, it leads.
+        if "youtube" in registry and "youtube" not in order:
+            order.insert(0, "youtube")
+        for name in [*DEFAULT_ORDER, *registry]:
+            if name in registry and name not in order and name != "mock":
                 order.append(name)
+        # Mock (dev only) is last unless explicitly ordered.
+        if "mock" in registry and "mock" not in order:
+            order.append("mock")
         self._order = order
 
     @property
@@ -58,6 +53,9 @@ class ProviderManager:
 
     def get(self, name: str) -> MediaProvider | None:
         return self._registry.get(name)
+
+    def is_known(self, name: str) -> bool:
+        return name in self._registry or name in KNOWN_PROVIDERS
 
     def status(self) -> list[ProviderStatus]:
         return [self._registry[name].status() for name in self._order]

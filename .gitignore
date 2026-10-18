@@ -28,8 +28,11 @@ htmlcov/
 *.swp
 *.swo
 
-# Docker
-.dockerignore
+# Local result files / worker output
+data/
+
+# Vercel
+.vercel/
 
 # Alembic
 alembic.ini.bak

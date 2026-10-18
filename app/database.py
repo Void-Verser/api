@@ -1,12 +1,17 @@
 """Database engine/session management.
 
 Defaults to a local sqlite file so the API boots without any credentials.
-Set DATABASE_URL to a PostgreSQL URL for production/Railway.
+Set DATABASE_URL to a PostgreSQL (or other SQLAlchemy-supported) URL for
+production — sqlite on serverless (/tmp) is NOT persistent.
 """
 
 from __future__ import annotations
 
-from sqlalchemy import create_engine, text
+import logging
+import os
+from pathlib import Path
+
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.config import get_settings
@@ -19,7 +24,8 @@ class Base(DeclarativeBase):
 def normalize_database_url(raw: str) -> str:
     raw = (raw or "").strip()
     if not raw:
-        return "sqlite:///./media_api.db"
+        # Vercel's filesystem is read-only except /tmp (ephemeral).
+        return "sqlite:////tmp/media_api.db" if os.getenv("VERCEL") else "sqlite:///./media_api.db"
     # Railway/Heroku style postgres:// -> SQLAlchemy + psycopg v3 dialect
     if raw.startswith("postgres://"):
         raw = raw.replace("postgres://", "postgresql+psycopg://", 1)
@@ -66,12 +72,50 @@ def get_db():
         db.close()
 
 
-def init_db() -> None:
-    """Create tables if they do not exist (migrations are the source of truth
-    for production; this keeps fresh deploys/dev working)."""
-    # Import models so metadata is populated.
-    import app.models  # noqa: F401
+log = logging.getLogger("media_api.db")
+_MIGRATIONS_DIR = Path(__file__).resolve().parent.parent / "migrations"
 
+
+def is_persistent_database() -> bool:
+    """False when data would vanish on redeploy (serverless sqlite)."""
+    url = str(get_engine().url)
+    if not url.startswith("sqlite"):
+        return True
+    return not (os.getenv("VERCEL") or url.startswith("sqlite:////tmp/"))
+
+
+def run_migrations() -> None:
+    """alembic upgrade head, adopting legacy create_all databases."""
+    from alembic import command
+    from alembic.config import Config
+
+    engine = get_engine()
+    cfg = Config()
+    cfg.set_main_option("script_location", str(_MIGRATIONS_DIR))
+    with engine.begin() as conn:
+        if conn.dialect.name == "postgresql":
+            # Serialize concurrent cold starts.
+            conn.execute(text("SELECT pg_advisory_xact_lock(724913)"))
+        tables = set(inspect(conn).get_table_names())
+        cfg.attributes["connection"] = conn
+        if "alembic_version" not in tables and "api_keys" in tables:
+            # Created by an older create_all() boot: schema matches 0001.
+            command.stamp(cfg, "0001_initial")
+        command.upgrade(cfg, "head")
+
+
+def init_db() -> None:
+    """Bring the schema up to date. Migrations are the source of truth;
+    create_all is only a fallback if alembic cannot run."""
+    import app.models  # noqa: F401  (populate metadata)
+
+    settings = get_settings()
+    if settings.run_migrations_on_startup and _MIGRATIONS_DIR.is_dir():
+        try:
+            run_migrations()
+            return
+        except Exception as exc:  # pragma: no cover - logged for operators
+            log.error("migrations failed, falling back to create_all: %s", exc)
     Base.metadata.create_all(bind=get_engine())
 
 

@@ -1,8 +1,10 @@
-"""Admin key-management endpoints — X-Admin-Key ONLY (never MEDIA_API_KEY)."""
+"""Admin key-management endpoints — X-Admin-Key ONLY (never MEDIA_API_KEY).
+
+Server-side automation API. Humans should use the owner dashboard, which
+never exposes MASTER_API_SECRET to the browser.
+"""
 
 from __future__ import annotations
-
-from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy import func
@@ -10,60 +12,23 @@ from sqlalchemy.orm import Session
 
 from app.auth.admin_auth import require_admin
 from app.database import get_db
-from app.models.api_key import VALID_PERMISSIONS, ApiKey
-from app.schemas.errors import APIError
+from app.models.api_key import ApiKey
 from app.schemas.admin import CreateKeyRequest, UpdateKeyRequest
-from app.utils.security import generate_api_key, hash_api_key
+from app.schemas.errors import APIError
+from app.services.keys import create_key as create_key_record
+from app.services.keys import public_key as _public
+from app.services.keys import validate_permissions as _validate_permissions
 
 router = APIRouter(prefix="/admin", tags=["admin"])
-
-
-def _public(key: ApiKey) -> dict:
-    return {
-        "id": key.id,
-        "name": key.name,
-        "masked_key": key.masked,
-        "active": key.active,
-        "permissions": key.permissions or [],
-        "rate_limit": key.rate_limit,
-        "request_count": key.request_count or 0,
-        "created_at": key.created_at.isoformat() if key.created_at else None,
-        "expires_at": key.expires_at.isoformat() if key.expires_at else None,
-        "last_used_at": key.last_used_at.isoformat() if key.last_used_at else None,
-    }
-
-
-def _validate_permissions(perms: list[str]) -> list[str]:
-    cleaned = sorted({p.strip().lower() for p in (perms or []) if p.strip()})
-    unknown = [p for p in cleaned if p not in VALID_PERMISSIONS]
-    if unknown:
-        raise APIError(400, "BAD_REQUEST", f"Unknown permissions: {', '.join(unknown)}")
-    if not cleaned:
-        raise APIError(400, "BAD_REQUEST", "At least one permission is required.")
-    return cleaned
 
 
 @router.post("/keys", summary="Create API key (admin)")
 def create_key(request: Request, body: CreateKeyRequest, db: Session = Depends(get_db)):
     require_admin(request)
-    perms = _validate_permissions(body.permissions)
-    plaintext = generate_api_key()
-    expires_at = None
-    if body.expires_in_days:
-        expires_at = datetime.now(timezone.utc) + timedelta(days=body.expires_in_days)
-    record = ApiKey(
-        name=body.name,
-        key_hash=hash_api_key(plaintext),
-        key_last3=plaintext[-3:],
-        active=True,
-        expires_at=expires_at,
-        permissions=perms,
-        rate_limit=body.rate_limit,
-        request_count=0,
+    record, plaintext = create_key_record(
+        db, name=body.name, permissions=body.permissions,
+        rate_limit=body.rate_limit, expires_in_days=body.expires_in_days,
     )
-    db.add(record)
-    db.commit()
-    db.refresh(record)
     # Plaintext is returned ONLY here, never stored, never listed again.
     return {"success": True, "data": {**_public(record), "api_key": plaintext}}
 

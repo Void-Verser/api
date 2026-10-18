@@ -1,8 +1,8 @@
 """Deterministic mock provider for dev/test without real credentials.
 
-Always enabled (unless disabled via settings) and returns fake but
-well-shaped normalized results. Uses the .invalid TLD so URLs are
-obviously non-routable placeholders.
+Only registered when MOCK_PROVIDER_ENABLED=true and APP_ENV is not
+production. Every result is labelled `"mock": true` and uses the .invalid
+TLD so URLs are obviously non-routable placeholders.
 """
 
 from __future__ import annotations
@@ -11,8 +11,13 @@ import hashlib
 from datetime import datetime, timedelta, timezone
 
 from app.providers.base import (
+    DOWNLOAD,
+    INFO,
+    SEARCH,
+    STREAM,
     MediaProvider,
     ProviderNotFoundError,
+    ProviderUnavailableError,
 )
 
 
@@ -24,6 +29,7 @@ def _slug(query: str) -> str:
 
 class MockProvider(MediaProvider):
     name = "mock"
+    capabilities = frozenset({SEARCH, INFO, STREAM, DOWNLOAD})
 
     def __init__(self, enabled: bool = True):
         self._enabled = enabled
@@ -39,7 +45,7 @@ class MockProvider(MediaProvider):
             idx = i + 1
             items.append(
                 {
-                    "id": f"mock-{slug}-{idx}",
+                    "id": f"mock:{slug}-{idx}",
                     "title": f"{query.strip()} (Mock Mix {idx})",
                     "artist": "Mock Artist",
                     "album": "Mock Album",
@@ -47,15 +53,14 @@ class MockProvider(MediaProvider):
                     "thumbnail": "https://cdn.example.invalid/thumb/mock.jpg",
                     "provider": self.name,
                     "media_type": "audio",
+                    "mock": True,
                 }
             )
         return items
 
     async def get_info(self, media_id: str) -> dict:
-        if not media_id.startswith("mock-") and ":" not in media_id:
-            # Accept bare mock ids and provider-prefixed ids; otherwise 404.
-            if not media_id.startswith("mock"):
-                raise ProviderNotFoundError(f"Media not found: {media_id}")
+        if not media_id.startswith(("mock:", "mock-")):
+            raise ProviderNotFoundError(f"Media not found: {media_id}")
         clean = media_id.split(":", 1)[-1]
         return {
             "id": media_id,
@@ -66,6 +71,7 @@ class MockProvider(MediaProvider):
             "thumbnail": "https://cdn.example.invalid/thumb/mock.jpg",
             "provider": self.name,
             "media_type": "audio",
+            "mock": True,
         }
 
     def _temp_url(self, kind: str, media_id: str) -> dict:
@@ -77,6 +83,7 @@ class MockProvider(MediaProvider):
             "expires_at": exp,
             "content_type": "audio/mpeg",
             "title": f"Mock track {media_id}",
+            "mock": True,
         }
 
     async def get_stream(self, media_id: str) -> dict:
@@ -95,30 +102,19 @@ class FailingProvider(MediaProvider):
     """Test helper: always raises a recoverable error to exercise fallback."""
 
     name = "failing"
+    capabilities = frozenset({SEARCH, INFO, STREAM, DOWNLOAD})
 
     def __init__(self, message: str = "boom"):
         self.message = message
 
-    @property
-    def enabled(self) -> bool:
-        return True
-
     async def search(self, query: str, limit: int = 10, offset: int = 0):
-        from app.providers.base import ProviderUnavailableError
-
         raise ProviderUnavailableError(self.message)
 
     async def get_info(self, media_id: str):
-        from app.providers.base import ProviderUnavailableError
-
         raise ProviderUnavailableError(self.message)
 
     async def get_stream(self, media_id: str):
-        from app.providers.base import ProviderUnavailableError
-
         raise ProviderUnavailableError(self.message)
 
     async def get_download(self, media_id: str):
-        from app.providers.base import ProviderUnavailableError
-
         raise ProviderUnavailableError(self.message)

@@ -9,7 +9,8 @@ from pydantic import BaseModel, Field
 
 class CreateKeyRequest(BaseModel):
     name: str = Field(min_length=1, max_length=128)
-    permissions: list[str] = Field(default_factory=lambda: ["search", "info"])
+    # None -> ["*"]: one key covers every client operation.
+    permissions: Optional[list[str]] = None
     rate_limit: Optional[int] = Field(default=None, ge=1, le=10000)
     expires_in_days: Optional[int] = Field(default=None, ge=1, le=3650)
 

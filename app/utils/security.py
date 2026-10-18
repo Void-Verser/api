@@ -50,4 +50,69 @@ def redact_secrets(text: str) -> str:
     redacted = re.sub(r"mapi_[A-Za-z0-9_\-]+", "mapi_***REDACTED***", redacted)
     redacted = re.sub(r"(?i)(api[_-]?key\s*[:=]\s*)[^\s,;]+", r"\1***REDACTED***", redacted)
     redacted = re.sub(r"(?i)(bearer\s+)[^\s,;]+", r"\1***REDACTED***", redacted)
+    redacted = re.sub(r"(?i)(oauth\s+)[^\s,;]+", r"\1***REDACTED***", redacted)
+    redacted = re.sub(r"(?i)([?&](?:key|sig|token|api_key)=)[^&\s]+", r"\1***REDACTED***", redacted)
     return redacted
+
+
+# --- Owner passwords (stdlib scrypt; no extra dependency) -------------------
+_SCRYPT_N, _SCRYPT_R, _SCRYPT_P = 2**14, 8, 1
+
+
+def hash_password(password: str) -> str:
+    salt = secrets.token_bytes(16)
+    digest = hashlib.scrypt(
+        password.encode("utf-8"), salt=salt, n=_SCRYPT_N, r=_SCRYPT_R, p=_SCRYPT_P, dklen=32
+    )
+    return f"scrypt${_SCRYPT_N}${_SCRYPT_R}${_SCRYPT_P}${salt.hex()}${digest.hex()}"
+
+
+def verify_password(password: str, stored: str) -> bool:
+    try:
+        algo, n, r, p, salt_hex, digest_hex = stored.split("$")
+        if algo != "scrypt":
+            return False
+        digest = hashlib.scrypt(
+            password.encode("utf-8"),
+            salt=bytes.fromhex(salt_hex),
+            n=int(n),
+            r=int(r),
+            p=int(p),
+            dklen=len(digest_hex) // 2,
+        )
+    except (ValueError, TypeError):
+        return False
+    return hmac.compare_digest(digest.hex(), digest_hex)
+
+
+def generate_token(nbytes: int = 32) -> str:
+    return secrets.token_urlsafe(nbytes)
+
+
+def hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+# --- Signed, expiring links ---------------------------------------------------
+_ephemeral_signing_secret = secrets.token_hex(32)
+
+
+def signing_key() -> bytes:
+    """SIGNING_SECRET, else derived from MASTER_API_SECRET, else per-process
+    random (links then stop working after a restart — set one in prod)."""
+    from app.config import get_settings
+
+    s = get_settings()
+    if s.signing_secret:
+        return s.signing_secret.encode("utf-8")
+    if s.master_api_secret:
+        return hmac.new(s.master_api_secret.encode(), b"media-api-link-signing", hashlib.sha256).digest()
+    return _ephemeral_signing_secret.encode()
+
+
+def sign_value(value: str) -> str:
+    return hmac.new(signing_key(), value.encode("utf-8"), hashlib.sha256).hexdigest()
+
+
+def verify_signature(value: str, signature: str) -> bool:
+    return hmac.compare_digest(sign_value(value), signature or "")
