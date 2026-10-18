@@ -134,9 +134,16 @@ in-memory rate limiting is per-instance unless `REDIS_URL` is set.
 
 ## H. Git and deployment state
 
-- Branch: `main`. v2.0.0 implementation commit and push: see the commit that
-  introduced this file and the follow-up handoff commit (`git log`).
-- Deployment: **not deployed**. No verified public URL.
+- Branch: `main`.
+- v2.0.0 implementation: commit `0039d3601b14aec07411e85c0c0d871e99a214c9`,
+  **pushed** to `origin/main` and verified via the GitHub API (2026-10-18).
+  This handoff update is the follow-up commit on top of it.
+- Working tree after push: clean (no uncommitted changes).
+- History note: commit `5332d73` (earlier session) mentions the third-party
+  reference service by name in its message; it contains no URL or credential.
+  History was not rewritten.
+- Deployment: **not deployed**. No Vercel/Docker credentials were available in
+  the session. No verified public URL.
 
 ## I. Last updated
 
